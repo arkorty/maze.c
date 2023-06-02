@@ -207,7 +207,7 @@ void *capture() {
         }
     }
 
-    QUIT = 1;
+    QUIT = true;
 
     return EXIT_SUCCESS;
 }
