@@ -132,8 +132,10 @@ void alloc_map() {
 void load_map(const char *path) {
     FILE *file = fopen(path, "r");
 
+    size_t y_cord = 0;
+    size_t x_cord = 0;
+
     char cur;
-    size_t y_cord = 0, x_cord = 0;
     while (EOF != (cur = getc(file))) {
         if ('\n' == cur) {
             x_cord = 0;
@@ -154,12 +156,13 @@ void load_map(const char *path) {
 }
 
 void print_map() {
-    const char sprites[] = " XO#@";
+    const char sprites[] = " H*XO";
     for (size_t y_cord = 0; y_cord < MAP->y_size; ++y_cord) {
         for (size_t x_cord = 0; x_cord < MAP->x_size; ++x_cord) {
-            printf("%lc ", sprites[MAP->pntr[y_cord][x_cord]]);
+            putchar(sprites[MAP->pntr[y_cord][x_cord]]);
+            putchar(' ');
         }
-        printf("\n");
+        putchar('\n');
     }
 }
 
@@ -184,6 +187,7 @@ void check_win() {
 /// Reads keyboard input
 void *capture() {
     set_term_raw(); // local function: Enable Raw Mode
+
     char ch;
     while ((ch = getchar()) != 'q') {
         switch (ch) {
@@ -241,14 +245,12 @@ void set_term_raw() {
                                      // printing to terminal
                                      // ICANON and ECHO is bitflag. ~ is binary NOT operator
 
-    tcsetattr(STDIN_FILENO, TCSAFLUSH,
-              &raw); // Set the terminal to be in raw mode
-                     // tcsetattr() from <termios.h>
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw); // Set the terminal to be in raw mode
+                                              // tcsetattr() from <termios.h>
 }
 
 void set_term_def() {
-    tcsetattr(STDIN_FILENO, TCSAFLUSH,
-              &TSTATE); // Set terminal to TSTATE state
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &TSTATE); // Set terminal to TSTATE state
 }
 
 int main(int argc, char *argv[]) {
