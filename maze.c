@@ -36,7 +36,11 @@ size_t X_SIZE;
 size_t Y_SIZE;
 
 void get_size(const char *path) {
-    FILE *file = fopen(path, "r");
+    FILE *file;
+    if (!(file = fopen(path, "r"))) {
+        printf("Couldn't find map file. Check file path.\n");
+        exit(0);
+    }
 
     char ch;
     size_t x_cnt = 0;
@@ -55,10 +59,8 @@ void get_size(const char *path) {
     Y_SIZE = y_cnt;
 }
 
-void move_cursor() {
-    printf("\033[%zdD", Y_SIZE);
-    printf("\033[%zdA", X_SIZE);
-}
+#define restore_cursor() printf("\033[u")
+#define save_cursor() printf("\033[s")
 
 void move(DIRECTION dir) {
     switch (dir) {
@@ -128,7 +130,11 @@ void alloc_map() {
 }
 
 void load_map(const char *path) {
-    FILE *file = fopen(path, "r");
+    FILE *file;
+    if (!(file = fopen(path, "r"))) {
+        printf("Couldn't find map file. Check file path.\n");
+        exit(0);
+    }
 
     size_t y_cord = 0;
     size_t x_cord = 0;
@@ -155,6 +161,7 @@ void load_map(const char *path) {
 
 void print_map() {
     const char sprites[] = " H*XO";
+    save_cursor();
     for (size_t y_cord = 0; y_cord < MAP->y_size; ++y_cord) {
         for (size_t x_cord = 0; x_cord < MAP->x_size; ++x_cord) {
             putchar(sprites[MAP->pntr[y_cord][x_cord]]);
@@ -162,18 +169,22 @@ void print_map() {
         }
         putchar('\n');
     }
+    restore_cursor();
 }
 
 void set_term_def();
 void set_term_raw();
 
 void clear() {
+    save_cursor();
     for (size_t y_cord = 0; y_cord < MAP->y_size; ++y_cord) {
         for (size_t x_cord = 0; x_cord < MAP->x_size; ++x_cord) {
-            printf("  ");
+            putchar(' ');
+            putchar(' ');
         }
-        printf("\n");
+        putchar('\n');
     }
+    restore_cursor();
 }
 
 void check_win() {
@@ -218,13 +229,14 @@ void *print() {
     while (!QUIT) { // When ESC is not pressed
         print_map();
         usleep(41667);
-        move_cursor();
     }
 
     if (WIN) {
         clear();
-        move_cursor();
         printf("Congratulations! You have won the game.\n");
+    } else {
+        clear();
+        printf("Keyboard interrupt! Quitting now...\n");
     }
 
     return EXIT_SUCCESS;
@@ -232,19 +244,21 @@ void *print() {
 
 void set_term_raw() {
     struct termios raw;
-    tcgetattr(STDIN_FILENO, &raw);              // Save the state of the terminal to struct raw
-                                                // STDIN_FILENO is from <stdlib.h>
-                                                // tcgetattr() from <termios.h>
-    tcgetattr(STDIN_FILENO, &TSTATE);
-    atexit(&set_term_def);                      // Revert to canonical mode when exiting the program
-                                                // atext() from <stdlib.h>
-    raw.c_lflag &= ~(ECHO | ICANON);            // Turn off canonical mode
-                                                // Turn off ECHO mode so that keyboard is not
-                                                // printing to terminal
-                                                // ICANON and ECHO is bitflag. ~ is binary NOT operator
+    tcgetattr(STDIN_FILENO, &raw); // Save the state of the terminal to struct raw
+                                   // STDIN_FILENO is from <stdlib.h>
+                                   // tcgetattr() from <termios.h>
 
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);   // Set the terminal to be in raw mode
-                                                // tcsetattr() from <termios.h>
+    tcgetattr(STDIN_FILENO, &TSTATE);
+
+    atexit(&set_term_def);           // Revert to canonical mode when exiting the program
+                                     // atext() from <stdlib.h>
+    raw.c_lflag &= ~(ECHO | ICANON); // Turn off canonical mode
+                                     // Turn off ECHO mode so that keyboard is not
+                                     // printing to terminal
+                                     // ICANON and ECHO is bitflag. ~ is binary NOT operator
+
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw); // Set the terminal to be in raw mode
+                                              // tcsetattr() from <termios.h>
 }
 
 void set_term_def() {
@@ -257,13 +271,13 @@ int main(int argc, char *argv[]) {
         alloc_map();
         load_map(argv[1]);
 
-        pthread_t id_print, id_read;
+        pthread_t print_pid, capture_pid;
 
-        pthread_create(&id_print, NULL, print, NULL);
-        pthread_create(&id_read, NULL, capture, NULL);
+        pthread_create(&print_pid, NULL, print, NULL);
+        pthread_create(&capture_pid, NULL, capture, NULL);
 
-        pthread_join(id_print, NULL);
-        pthread_join(id_read, NULL);
+        pthread_join(print_pid, NULL);
+        pthread_join(capture_pid, NULL);
     }
 
     return 0;
