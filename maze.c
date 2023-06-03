@@ -7,11 +7,13 @@
 #include <threads.h>
 #include <unistd.h>
 
-#define UP 3
+#define RIGHT 4
 #define LEFT 1
 #define DOWN 2
-#define RIGHT 4
+#define UP 3
 
+typedef struct termios TERMSTATE;
+typedef uint8_t DIRECTION;
 typedef struct MAPSTRUCT {
     size_t x_size;
     size_t y_size;
@@ -23,10 +25,6 @@ typedef struct MAPSTRUCT {
     size_t f_y_cord;
     uint8_t **pntr;
 } MAPSTRUCT;
-
-typedef struct termios TERMSTATE;
-
-typedef uint8_t DIRECTION;
 
 TERMSTATE TSTATE;
 MAPSTRUCT *MAP;
@@ -184,7 +182,7 @@ void check_win() {
     }
 }
 
-/// Reads keyboard input
+// Reads keyboard input
 void *capture() {
     set_term_raw(); // local function: Enable Raw Mode
 
@@ -234,19 +232,19 @@ void *print() {
 
 void set_term_raw() {
     struct termios raw;
-    tcgetattr(STDIN_FILENO, &raw); // Save the state of the terminal to struct raw
-                                   // STDIN_FILENO is from <stdlib.h>
-                                   // tcgetattr() from <termios.h>
+    tcgetattr(STDIN_FILENO, &raw);              // Save the state of the terminal to struct raw
+                                                // STDIN_FILENO is from <stdlib.h>
+                                                // tcgetattr() from <termios.h>
     tcgetattr(STDIN_FILENO, &TSTATE);
-    atexit(&set_term_def);           // Revert to canonical mode when exiting the program
-                                     // atext() from <stdlib.h>
-    raw.c_lflag &= ~(ECHO | ICANON); // Turn off canonical mode
-                                     // Turn off ECHO mode so that keyboard is not
-                                     // printing to terminal
-                                     // ICANON and ECHO is bitflag. ~ is binary NOT operator
+    atexit(&set_term_def);                      // Revert to canonical mode when exiting the program
+                                                // atext() from <stdlib.h>
+    raw.c_lflag &= ~(ECHO | ICANON);            // Turn off canonical mode
+                                                // Turn off ECHO mode so that keyboard is not
+                                                // printing to terminal
+                                                // ICANON and ECHO is bitflag. ~ is binary NOT operator
 
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw); // Set the terminal to be in raw mode
-                                              // tcsetattr() from <termios.h>
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);   // Set the terminal to be in raw mode
+                                                // tcsetattr() from <termios.h>
 }
 
 void set_term_def() {
@@ -259,7 +257,6 @@ int main(int argc, char *argv[]) {
         alloc_map();
         load_map(argv[1]);
 
-        // Start Multithreading
         pthread_t id_print, id_read;
 
         pthread_create(&id_print, NULL, print, NULL);
