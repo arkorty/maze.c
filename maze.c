@@ -1,8 +1,10 @@
 #include <pthread.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/ioctl.h>
 #include <termios.h>
 #include <threads.h>
 #include <unistd.h>
@@ -12,30 +14,45 @@
 #define DOWN 2
 #define UP 3
 
-typedef struct termios TERMSTATE;
-typedef uint8_t DIRECTION;
-typedef struct MAPSTRUCT {
-    size_t x_size;
-    size_t y_size;
-    size_t p_x_cord;
-    size_t p_y_cord;
-    size_t s_x_cord;
-    size_t s_y_cord;
-    size_t f_x_cord;
-    size_t f_y_cord;
-    uint8_t **pntr;
-} MAPSTRUCT;
+typedef struct termios tstate_t;
+typedef uint8_t dir_t;
+typedef struct maze_t {
+    size_t X_SIZE;
+    size_t Y_SIZE;
+    size_t P_X_CORD;
+    size_t P_Y_CORD;
+    size_t S_X_CORD;
+    size_t S_Y_CORD;
+    size_t F_X_CORD;
+    size_t F_Y_CORD;
+    uint8_t **PNTR;
+} maze_t;
 
-TERMSTATE TSTATE;
-MAPSTRUCT *MAP;
+tstate_t TSTATE;
+maze_t *MAZE;
 
 bool QUIT = false;
-bool WIN = false;
+bool WINSTATE = false;
 
-size_t X_SIZE;
-size_t Y_SIZE;
+size_t TERM_COL;
+size_t TERM_ROW;
 
-void get_size(const char *path) {
+void get_term_size() {
+    struct winsize w;
+    ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+    TERM_ROW = w.ws_row;
+    TERM_COL = w.ws_col;
+}
+
+void exit_on_inadequate_space() {
+    if (TERM_COL < 2 * MAZE->X_SIZE || TERM_ROW < MAZE->Y_SIZE) {
+        printf("Terminal is too small to display the whole maze.\n\
+Either make the terminal window bigger, or use a smaller maze map.\n");
+        exit(0);
+    }
+}
+
+void get_maze_size(const char *path) {
     FILE *file;
     if (!(file = fopen(path, "r"))) {
         printf("Couldn't find map file. Check file path.\n");
@@ -55,81 +72,81 @@ void get_size(const char *path) {
         }
     }
 
-    X_SIZE = x_cnt;
-    Y_SIZE = y_cnt;
+    MAZE->X_SIZE = x_cnt;
+    MAZE->Y_SIZE = y_cnt;
 }
 
 #define restore_cursor() printf("\033[u")
 #define save_cursor() printf("\033[s")
+#define zero_cursor() printf("\033[0;0H"); fflush(stdout)
 
-void move(DIRECTION dir) {
+void move(dir_t dir) {
     switch (dir) {
     case 1:
-        if (MAP->p_x_cord != 0 && MAP->pntr[MAP->p_y_cord][MAP->p_x_cord - 1] != 1) {
-            if (MAP->p_x_cord == MAP->s_x_cord && MAP->p_y_cord == MAP->s_y_cord) {
-                MAP->pntr[MAP->p_y_cord][MAP->p_x_cord] = 2;
+        if (MAZE->P_X_CORD != 0 && MAZE->PNTR[MAZE->P_Y_CORD][MAZE->P_X_CORD - 1] != 1) {
+            if (MAZE->P_X_CORD == MAZE->S_X_CORD && MAZE->P_Y_CORD == MAZE->S_Y_CORD) {
+                MAZE->PNTR[MAZE->P_Y_CORD][MAZE->P_X_CORD] = 2;
             } else {
-                MAP->pntr[MAP->p_y_cord][MAP->p_x_cord] = 0;
+                MAZE->PNTR[MAZE->P_Y_CORD][MAZE->P_X_CORD] = 0;
             }
-            --MAP->p_x_cord;
-            MAP->pntr[MAP->p_y_cord][MAP->p_x_cord] = 4;
+            --MAZE->P_X_CORD;
+            MAZE->PNTR[MAZE->P_Y_CORD][MAZE->P_X_CORD] = 4;
         }
         break;
     case 2:
-        if (MAP->p_y_cord != MAP->y_size - 1 && MAP->pntr[MAP->p_y_cord + 1][MAP->p_x_cord] != 1) {
-            if (MAP->p_x_cord == MAP->s_x_cord && MAP->p_y_cord == MAP->s_y_cord) {
-                MAP->pntr[MAP->p_y_cord][MAP->p_x_cord] = 2;
+        if (MAZE->P_Y_CORD != MAZE->Y_SIZE - 1 && MAZE->PNTR[MAZE->P_Y_CORD + 1][MAZE->P_X_CORD] != 1) {
+            if (MAZE->P_X_CORD == MAZE->S_X_CORD && MAZE->P_Y_CORD == MAZE->S_Y_CORD) {
+                MAZE->PNTR[MAZE->P_Y_CORD][MAZE->P_X_CORD] = 2;
             } else {
-                MAP->pntr[MAP->p_y_cord][MAP->p_x_cord] = 0;
+                MAZE->PNTR[MAZE->P_Y_CORD][MAZE->P_X_CORD] = 0;
             }
-            ++MAP->p_y_cord;
-            MAP->pntr[MAP->p_y_cord][MAP->p_x_cord] = 4;
+            ++MAZE->P_Y_CORD;
+            MAZE->PNTR[MAZE->P_Y_CORD][MAZE->P_X_CORD] = 4;
         }
         break;
     case 3:
-        if (MAP->p_y_cord != 0 && MAP->pntr[MAP->p_y_cord - 1][MAP->p_x_cord] != 1) {
-            if (MAP->p_x_cord == MAP->s_x_cord && MAP->p_y_cord == MAP->s_y_cord) {
-                MAP->pntr[MAP->p_y_cord][MAP->p_x_cord] = 2;
+        if (MAZE->P_Y_CORD != 0 && MAZE->PNTR[MAZE->P_Y_CORD - 1][MAZE->P_X_CORD] != 1) {
+            if (MAZE->P_X_CORD == MAZE->S_X_CORD && MAZE->P_Y_CORD == MAZE->S_Y_CORD) {
+                MAZE->PNTR[MAZE->P_Y_CORD][MAZE->P_X_CORD] = 2;
             } else {
-                MAP->pntr[MAP->p_y_cord][MAP->p_x_cord] = 0;
+                MAZE->PNTR[MAZE->P_Y_CORD][MAZE->P_X_CORD] = 0;
             }
-            --MAP->p_y_cord;
-            MAP->pntr[MAP->p_y_cord][MAP->p_x_cord] = 4;
+            --MAZE->P_Y_CORD;
+            MAZE->PNTR[MAZE->P_Y_CORD][MAZE->P_X_CORD] = 4;
         }
         break;
     case 4:
-        if (MAP->p_x_cord != MAP->x_size - 1 && MAP->pntr[MAP->p_y_cord][MAP->p_x_cord + 1] != 1) {
-            if (MAP->p_x_cord == MAP->s_x_cord && MAP->p_y_cord == MAP->s_y_cord) {
-                MAP->pntr[MAP->p_y_cord][MAP->p_x_cord] = 2;
+        if (MAZE->P_X_CORD != MAZE->X_SIZE - 1 && MAZE->PNTR[MAZE->P_Y_CORD][MAZE->P_X_CORD + 1] != 1) {
+            if (MAZE->P_X_CORD == MAZE->S_X_CORD && MAZE->P_Y_CORD == MAZE->S_Y_CORD) {
+                MAZE->PNTR[MAZE->P_Y_CORD][MAZE->P_X_CORD] = 2;
             } else {
-                MAP->pntr[MAP->p_y_cord][MAP->p_x_cord] = 0;
+                MAZE->PNTR[MAZE->P_Y_CORD][MAZE->P_X_CORD] = 0;
             }
-            ++MAP->p_x_cord;
-            MAP->pntr[MAP->p_y_cord][MAP->p_x_cord] = 4;
+            ++MAZE->P_X_CORD;
+            MAZE->PNTR[MAZE->P_Y_CORD][MAZE->P_X_CORD] = 4;
         }
         break;
     }
 }
 
 void free_map() {
-    for (size_t y_cord = 0; y_cord < MAP->y_size; ++y_cord) {
-        free(MAP->pntr[y_cord]);
+    for (size_t y_cord = 0; y_cord < MAZE->Y_SIZE; ++y_cord) {
+        free(MAZE->PNTR[y_cord]);
     }
-    free(MAP->pntr);
-    free(MAP);
+    free(MAZE->PNTR);
+    free(MAZE);
 }
 
-void alloc_map() {
-    MAP = (MAPSTRUCT *)malloc(sizeof(MAPSTRUCT));
-    MAP->x_size = X_SIZE;
-    MAP->y_size = Y_SIZE;
-    MAP->pntr = (uint8_t **)malloc(MAP->y_size * sizeof(uint8_t *));
-    for (size_t y_cord = 0; y_cord < MAP->y_size; ++y_cord) {
-        MAP->pntr[y_cord] = (uint8_t *)malloc(MAP->x_size * sizeof(uint8_t));
+void alloc_maze_buffer(const char *path) {
+    MAZE = (maze_t *)malloc(sizeof(maze_t));
+    get_maze_size(path);
+    MAZE->PNTR = (uint8_t **)malloc(MAZE->Y_SIZE * sizeof(uint8_t *));
+    for (size_t y_cord = 0; y_cord < MAZE->Y_SIZE; ++y_cord) {
+        MAZE->PNTR[y_cord] = (uint8_t *)malloc(MAZE->X_SIZE * sizeof(uint8_t));
     }
 }
 
-void load_map(const char *path) {
+void load_maze_to_buffer(const char *path) {
     FILE *file;
     if (!(file = fopen(path, "r"))) {
         printf("Couldn't find map file. Check file path.\n");
@@ -146,28 +163,32 @@ void load_map(const char *path) {
             ++y_cord;
             continue;
         } else if ('4' == cur) {
-            MAP->p_x_cord = x_cord;
-            MAP->p_y_cord = y_cord;
-            MAP->s_x_cord = x_cord;
-            MAP->s_y_cord = y_cord;
+            MAZE->P_X_CORD = x_cord;
+            MAZE->P_Y_CORD = y_cord;
+            MAZE->S_X_CORD = x_cord;
+            MAZE->S_Y_CORD = y_cord;
         } else if ('3' == cur) {
-            MAP->f_x_cord = x_cord;
-            MAP->f_y_cord = y_cord;
+            MAZE->F_X_CORD = x_cord;
+            MAZE->F_Y_CORD = y_cord;
         }
-        MAP->pntr[y_cord][x_cord] = (uint8_t)(cur - (char)'0');
+        MAZE->PNTR[y_cord][x_cord] = (uint8_t)(cur - (char)'0');
         ++x_cord;
     }
 }
 
-void print_map() {
+void print() {
     const char sprites[] = " H*XO";
     save_cursor();
-    for (size_t y_cord = 0; y_cord < MAP->y_size; ++y_cord) {
-        for (size_t x_cord = 0; x_cord < MAP->x_size; ++x_cord) {
-            putchar(sprites[MAP->pntr[y_cord][x_cord]]);
-            putchar(' ');
+    for (size_t y_cord = 0; y_cord < MAZE->Y_SIZE; ++y_cord) {
+        for (size_t x_cord = 0; x_cord < MAZE->X_SIZE; ++x_cord) {
+            putchar(sprites[MAZE->PNTR[y_cord][x_cord]]);
+            if (x_cord < MAZE->X_SIZE - 1) {
+                putchar(' ');
+            }
         }
-        putchar('\n');
+        if (y_cord < MAZE->Y_SIZE - 1) {
+            putchar('\n');
+        }
     }
     restore_cursor();
 }
@@ -176,20 +197,22 @@ void set_term_def();
 void set_term_raw();
 
 void clear() {
+    zero_cursor();
     save_cursor();
-    for (size_t y_cord = 0; y_cord < MAP->y_size; ++y_cord) {
-        for (size_t x_cord = 0; x_cord < MAP->x_size; ++x_cord) {
-            putchar(' ');
+    for (size_t y_cord = 0; y_cord < TERM_ROW; ++y_cord) {
+        for (size_t x_cord = 0; x_cord < TERM_COL; ++x_cord) {
             putchar(' ');
         }
-        putchar('\n');
+        if (y_cord < MAZE->Y_SIZE - 1) {
+            putchar('\n');
+        }
     }
     restore_cursor();
 }
 
 void check_win() {
-    if (MAP->p_y_cord == MAP->f_y_cord && MAP->p_x_cord == MAP->f_x_cord) {
-        WIN = true;
+    if (MAZE->P_Y_CORD == MAZE->F_Y_CORD && MAZE->P_X_CORD == MAZE->F_X_CORD) {
+        WINSTATE = true;
     }
 }
 
@@ -215,7 +238,7 @@ void *capture() {
         }
 
         check_win();
-        if (WIN) {
+        if (WINSTATE) {
             break;
         }
     }
@@ -225,13 +248,15 @@ void *capture() {
     return EXIT_SUCCESS;
 }
 
-void *print() {
+void *update() {
+    zero_cursor();
+    clear();
     while (!QUIT) { // When ESC is not pressed
-        print_map();
+        print();
         usleep(41667);
     }
 
-    if (WIN) {
+    if (WINSTATE) {
         clear();
         printf("Congratulations! You have won the game.\n");
     } else {
@@ -267,16 +292,17 @@ void set_term_def() {
 
 int main(int argc, char *argv[]) {
     if (argc > 1 && argc < 3) {
-        get_size(argv[1]);
-        alloc_map();
-        load_map(argv[1]);
+        get_term_size();
+        alloc_maze_buffer(argv[1]);
+        exit_on_inadequate_space();
+        load_maze_to_buffer(argv[1]);
 
-        pthread_t print_pid, capture_pid;
+        pthread_t update_pid, capture_pid;
 
-        pthread_create(&print_pid, NULL, print, NULL);
+        pthread_create(&update_pid, NULL, update, NULL);
         pthread_create(&capture_pid, NULL, capture, NULL);
 
-        pthread_join(print_pid, NULL);
+        pthread_join(update_pid, NULL);
         pthread_join(capture_pid, NULL);
     }
 
